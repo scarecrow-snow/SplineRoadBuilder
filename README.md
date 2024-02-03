@@ -1,5 +1,5 @@
 
-Ruild Roads Procedurally
+Build Roads Procedurally
 
 https://www.youtube.com/watch?v=ZiHH_BvjoGk
 上記チュートリアル動画に基づいて作成
