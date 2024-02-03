@@ -22,16 +22,28 @@ public class JunctionBuilderOverlay : Overlay
 {
     private const string ID_OVERLAY = "JunctionBuilder-overlay";
 
+
+    // VisualElemant
     Label SelectionInfoLabel;
     BuildJunctionButton buildJunctionButton;
     ClearButton clearButton;
-
     VisualElement curveSlidersParent;
 
+
+    // 交差点作成のために選択したスプラインの端
     List<SelectedSplineElementInfo> selectedInfos;
+    
+    // 現在選択中の交差点、交差点が存在しない場合はnullとなる
     Intersection currentIntersection;
 
+
+    // カーブの値をスライダーで変更した場合のイベント
+    // 変更前　Undo/Redoに対応するために変更前にも配置
+    private event Action changeCurveValuePrevEventHandler;
+    
+    // 変更後
     private event Action changeCurveValueEventHandler;
+
 
     // 各種初期化処理を行う
     public override void OnCreated()
@@ -71,6 +83,15 @@ public class JunctionBuilderOverlay : Overlay
 
         await UniTask.WaitUntil(() => Selection.activeGameObject.GetComponent<SplineRoad>() != null);
 
+        // アンドゥリドゥが行われる度に呼ばれるcallback
+        Undo.undoRedoPerformed += () => {
+            SlidersViewUpdate();
+        };
+
+        // カーブの値変更前
+        changeCurveValuePrevEventHandler += () => {
+            Undo.RegisterCompleteObjectUndo(Selection.activeGameObject.GetComponent<SplineRoad>(), "intersections");
+        };
         // カーブの値を変更した場合に呼び出すeventを登録
         changeCurveValueEventHandler += Selection.activeGameObject.GetComponent<SplineRoad>().OnCurveChangedByOverlayPanel;
         
@@ -94,12 +115,13 @@ public class JunctionBuilderOverlay : Overlay
         root.Add(curveSlidersParent);
 
         selectedInfos.Clear();
-
-        
+        curveSlidersParent.Clear();
+        ClearSelectionInfo();
+        currentIntersection = null;
 
         return root;
     }
-
+    
     private void ShowIntersction(Intersection intersection)
     {
         if(intersection == null) return;
@@ -117,8 +139,10 @@ public class JunctionBuilderOverlay : Overlay
             slider.labelElement.style.minWidth = 60;
             slider.labelElement.style.maxWidth = 80;
             slider.value = intersection.curves[i];
+
             slider.RegisterValueChangedCallback((x) =>
             {
+                changeCurveValuePrevEventHandler?.Invoke();
                 intersection.curves[index] = x.newValue;
                 changeCurveValueEventHandler?.Invoke();
                
@@ -190,6 +214,7 @@ public class JunctionBuilderOverlay : Overlay
         return false;
     }
 
+    // スプラインの変更の度に呼び出される
     private void OnSplineChanged()
     {
         if(SerchIntersection())
@@ -232,6 +257,19 @@ public class JunctionBuilderOverlay : Overlay
                 SelectionInfoLabel.text += $"Spline {element.targetIndex}, knot {element.knotIndex} \n";
             }
         }
+    }
+
+
+    // currentIntersectionに応じてsliderの値を更新する
+    private void SlidersViewUpdate()
+    {
+        int index = 0;
+        foreach(Slider slider in curveSlidersParent.Children())
+        {
+            slider.value = currentIntersection.curves[index];
+            index++;
+        }
+        
     }
 
     [EditorToolbarElement(ID, typeof(SceneView))]

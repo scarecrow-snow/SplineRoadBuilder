@@ -6,6 +6,8 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Splines;
 
+using Cysharp.Threading.Tasks;
+using System;
 
 [RequireComponent(typeof(SplineSampler))]
 [ExecuteInEditMode]
@@ -16,7 +18,10 @@ public class SplineRoad : MonoBehaviour
 
     private List<Vector3> m_vertsP1 = new List<Vector3>();
     private List<Vector3> m_vertsP2 = new List<Vector3>();
+
+    private int prevResolution;
     [SerializeField] private int resolution;
+    
     [SerializeField] private MeshFilter m_meshFilter;
 
     [SerializeField] private float m_width;
@@ -27,11 +32,21 @@ public class SplineRoad : MonoBehaviour
     [SerializeField] private List<Intersection> intersections = new List<Intersection>();
 
 
+    bool buildWhileFlag;    // メッシュ作成中のフラグ
+
+    void OnValidate()
+    {
+        DelayBuildMesh().Forget();
+    }
+
     void OnEnable()
     {
         Spline.Changed += OnSplineChanged;
-        GetVerts();
-        BuildMesh();
+        buildWhileFlag = false;
+        
+        prevResolution = resolution;
+
+        ReBuildMesh();
     }
 
     private void OnDisable()
@@ -41,9 +56,10 @@ public class SplineRoad : MonoBehaviour
 
     private void OnSplineChanged(Spline arg1, int arg2, SplineModification arg3)
     {
-        GetVerts();
-        BuildMesh();
+        ReBuildMesh();
     }
+
+
 
     public void OnCurveChangedByOverlayPanel()
     {
@@ -109,7 +125,7 @@ public class SplineRoad : MonoBehaviour
     public void ClearIntersections()
     {
         intersections.Clear();
-        BuildMesh();
+        ReBuildMesh();
     }
 
     private void OnDrawGizmos()
@@ -154,31 +170,62 @@ public class SplineRoad : MonoBehaviour
 
     }
 
+    public void ReBuildMesh()
+    {
+        GetVerts();
+        BuildMesh();
+    }
+
+    private async UniTaskVoid DelayBuildMesh()
+    {
+        await UniTask.WaitUntil(() => !buildWhileFlag);
+        ReBuildMesh();
+    }
+
+    /// <summary>
+    /// Meshを構築する
+    /// SubMeshを使うのでMeshRenderのMaterialを二つにすること
+    /// </summary>
     public void BuildMesh()
     {
+        if(buildWhileFlag) return;
+
+        buildWhileFlag = true;
+
         List<Vector3> verts = new List<Vector3>();
         List<int> tris = new List<int>();
+        List<int> trisSub = new List<int>();
+        
+        List<Vector2> uvs = new List<Vector2>();
 
-        AddRoadGeometry(ref verts, ref tris);
-
-        AddIntersectionGeometry(ref verts, ref tris);
+        AddRoadGeometry(ref verts, ref tris, ref uvs);
+        AddIntersectionGeometry(ref verts, ref trisSub, ref uvs);
 
         // meshに流し込む
         Mesh m = new Mesh();
-        m.vertices = verts.ToArray();
-        m.triangles = tris.ToArray();
+        m.subMeshCount = 2;
+
+        m.SetVertices(verts);
+        
+        m.SetTriangles(tris, 0);
+        m.SetTriangles(trisSub, 1);
+
+        m.SetUVs(0, uvs);
+        
         m_meshFilter.mesh = m;
 
+        buildWhileFlag = false;
     }
 
 
-    private void AddRoadGeometry(ref List<Vector3> verts, ref List<int> tris)
+    private void AddRoadGeometry(ref List<Vector3> verts, ref List<int> tris, ref List<Vector2> uvs)
     {
         // 道路のメッシュ
         for (int currentSplineIndex = 0; currentSplineIndex < m_splineSampler.NumSplines; currentSplineIndex++)
         {
             int splineOffset = resolution * currentSplineIndex;
             splineOffset += currentSplineIndex;
+            float uvOffset = 0;
             for (int currentSplinePoint = 1; currentSplinePoint < resolution + 1; currentSplinePoint++)
             {
                 int vertoffset = splineOffset + currentSplinePoint;
@@ -201,11 +248,17 @@ public class SplineRoad : MonoBehaviour
 
                 verts.AddRange(new List<Vector3> { p1, p2, p3, p4 });
                 tris.AddRange(new List<int> { t1, t2, t3, t4, t5, t6 });
+
+                float distance = Vector3.Distance(p1, p3) / 4f;
+                float uvDistance = uvOffset + distance;
+                uvs.AddRange(new List<Vector2> {new Vector2(uvOffset, 0), new Vector2(uvOffset, 1), new Vector2(uvDistance, 0), new Vector2(uvDistance, 1)});
+
+                uvOffset += distance;
             }
         }
     }
 
-    private void AddIntersectionGeometry(ref List<Vector3> verts, ref List<int> tris)
+    private void AddIntersectionGeometry(ref List<Vector3> verts, ref List<int> tris, ref List<Vector2> uvs)
     {
         // 交差点のメッシュ作成用の頂点を算出する
         for (int i = 0; i < intersections.Count; i++)
@@ -298,20 +351,28 @@ public class SplineRoad : MonoBehaviour
 
             for (int j = 1; j <= curvePoints.Count; j++)
             {
-                verts.Add(center);
-                verts.Add(curvePoints[j - 1]);
+                Vector3 pointA = curvePoints[j - 1];
+                Vector3 pointB;
                 if (j == curvePoints.Count)
                 {
-                    verts.Add(curvePoints[0]);
+                    pointB = curvePoints[0];
                 }
                 else
                 {
-                    verts.Add(curvePoints[j]);
+                    pointB = curvePoints[j];
                 }
+
+                verts.Add(center);
+                verts.Add(pointA);
+                verts.Add(pointB);
 
                 tris.Add(pointOffset + ((j - 1) * 3) + 0);
                 tris.Add(pointOffset + ((j - 1) * 3) + 1);
                 tris.Add(pointOffset + ((j - 1) * 3) + 2);
+
+                uvs.Add(new Vector2(center.z, center.x));
+                uvs.Add(new Vector2(pointA.z, pointA.x));
+                uvs.Add(new Vector2(pointB.z, pointB.x));
             }
         }
     }
