@@ -8,11 +8,9 @@ using UnityEditor.Splines;
 
 
 
-[ExecuteInEditMode]
+[ExecuteAlways]
 public static class SplineToolUtility
 {
-    static List<SelectedSplineElementInfo> infos = new List<SelectedSplineElementInfo>();
-    
     public static bool HasSelection()
     {
         return SplineSelection.HasActiveSplineSelection();
@@ -20,6 +18,8 @@ public static class SplineToolUtility
 
     public static List<SelectedSplineElementInfo> GetSelection()
     {
+        List<SelectedSplineElementInfo> infos = new List<SelectedSplineElementInfo>();
+
         // pacage内アセンブリとして存在してinternalで設定されているのでバイパスする
         List<SelectableSplineElement> elements = SplineSelection.selection;
         
@@ -27,19 +27,10 @@ public static class SplineToolUtility
         {
             var info = new SelectedSplineElementInfo(element.target, element.targetIndex, element.knotIndex);
 
-            if(!infos.Contains(info))
-            {
-                infos.Add(info);
-                Debug.Log(info.ToString());
-            }
+            infos.Add(info);
         }
 
         return infos;
-    }
-
-    public static void ClearSelection()
-    {
-        infos.Clear();
     }
 }
 

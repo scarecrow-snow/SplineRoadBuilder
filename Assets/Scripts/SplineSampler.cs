@@ -14,7 +14,7 @@ public class SplineSampler : MonoBehaviour
     // 指定したスプラインの幅をサンプリングするメソッド
     public void SampleSplineWidth(int index, float t, float width, out Vector3 _p1, out Vector3 _p2)
     {
-        // 指定した時刻における座標と向きを取得
+        // 指定したタイミングにおける座標と向きを取得
         var time = t;
         if (time == 0)
         {

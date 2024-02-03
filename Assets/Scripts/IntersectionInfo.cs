@@ -31,7 +31,7 @@ public struct JunctionInfo
             // 各フィールドの等価性を確認
             return splineIndex == other.splineIndex &&
                    knotIndex == other.knotIndex &&
-                   spline == other.spline &&
+                   spline.Equals(other.spline) &&
                    knot.Equals(other.knot);
         }
 
@@ -50,37 +50,28 @@ public struct JunctionInfo
 public class Intersection
 {
     public List<JunctionInfo> junctions;
+    
+    public List<float> curves;
+    
 
     public void AddJunction(int splineIndex, int knotIndex, Spline spline, BezierKnot knot)
     {
         if (junctions == null)
         {
             junctions = new List<JunctionInfo>();
+            curves = new List<float>();
         }
 
         junctions.Add(new JunctionInfo(splineIndex, knotIndex, spline, knot));
+        curves.Add(0.3f);
     }
+
 
     internal IEnumerable<JunctionInfo> GetJunctions()
     {
         return junctions;
     }
 
-    public override bool Equals(object obj)
-    {
-        if (obj is Intersection other)
-        {
-            // 各フィールドの等価性を確認
-            return junctions.SequenceEqual(other.junctions);
-        }
 
-        return false;
-    }
-
-    public override int GetHashCode()
-    {
-        
-        return base.GetHashCode();
-    }
 }
 

@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 
 using UnityEditor;
+
 using UnityEngine;
 using UnityEngine.Splines;
 
@@ -26,16 +27,11 @@ public class SplineRoad : MonoBehaviour
     [SerializeField] private List<Intersection> intersections = new List<Intersection>();
 
 
-
-    void Update()
-    {
-        GetVerts();
-    }
-
     void OnEnable()
     {
         Spline.Changed += OnSplineChanged;
         GetVerts();
+        BuildMesh();
     }
 
     private void OnDisable()
@@ -45,8 +41,18 @@ public class SplineRoad : MonoBehaviour
 
     private void OnSplineChanged(Spline arg1, int arg2, SplineModification arg3)
     {
+        GetVerts();
         BuildMesh();
     }
+
+    public void OnCurveChangedByOverlayPanel()
+    {
+        BuildMesh();
+
+        // overlayから変更した場合に値が保存されるように設定
+        EditorUtility.SetDirty(gameObject);
+    }
+
 
     private void GetVerts()
     {
@@ -75,14 +81,35 @@ public class SplineRoad : MonoBehaviour
         }
 
     }
+    public bool HasIntersection()
+    {
+        return intersections.Count > 0;
+    }
+    
+    public Intersection[] GetIntersections()
+    {
+        return intersections.ToArray();
+    }
 
-    public void AddJunction(Intersection intersection)
+   
+
+    public void AddIntersection(Intersection intersection)
     {
         if (!intersections.Contains(intersection))
         {
             intersections.Add(intersection);
+            
             BuildMesh();
+            return;
         }
+        
+    }
+
+
+    public void ClearIntersections()
+    {
+        intersections.Clear();
+        BuildMesh();
     }
 
     private void OnDrawGizmos()
@@ -104,9 +131,10 @@ public class SplineRoad : MonoBehaviour
         // ジャンクションの位置を取得して描画
         if (intersections.Count <= 0) return;
 
-        
+
         for (int i = 0; i < intersections.Count; i++)
         {
+            Vector3 addPos = new Vector3();
             foreach (JunctionInfo info in intersections[i].GetJunctions())
             {
                 m_splineSampler.SampleSplineWidth(info.splineIndex, info.knotIndex == 0 ? 0f : 1f, m_width, out Vector3 p1, out Vector3 p2);
@@ -114,12 +142,19 @@ public class SplineRoad : MonoBehaviour
                 Handles.SphereHandleCap(0, p1, Quaternion.identity, 1f, EventType.Repaint);
                 Handles.color = Color.red;
                 Handles.SphereHandleCap(0, p2, Quaternion.identity, 1f, EventType.Repaint);
+
+                addPos += p1;
+                addPos += p2;
             }
+
+            Handles.color = Color.white;
+            Vector3 centerPos = addPos / (intersections[i].junctions.Count * 2);
+            Handles.DrawWireDisc(centerPos, Vector3.up, 0.5f);
         }
 
     }
 
-    private void BuildMesh()
+    public void BuildMesh()
     {
         List<Vector3> verts = new List<Vector3>();
         List<int> tris = new List<int>();
@@ -192,7 +227,7 @@ public class SplineRoad : MonoBehaviour
                 if (junction.knotIndex == 0)
                 {
                     junctionEdges.Add(new JunctionEdge(p1, p2));
-                    
+
                 }
                 else
                 {
@@ -227,7 +262,7 @@ public class SplineRoad : MonoBehaviour
                 return 0;
             });
 
-            
+
 
             // エッジを滑らかにするため、ベジェ曲線で補完する
             List<Vector3> curvePoints = new List<Vector3>();
@@ -238,8 +273,10 @@ public class SplineRoad : MonoBehaviour
                 Vector3 startPoint = junctionEdges[j - 1].left;
                 Vector3 endPoint = (j < junctionEdges.Count) ? junctionEdges[j].right : junctionEdges[0].right;
                 Vector3 mid = Vector3.Lerp(startPoint, endPoint, 0.5f);
-                Vector3 c = Vector3.Lerp(mid, center, 0.5f);
-                
+                Vector3 dir = center - mid;
+                mid = mid - dir;
+                Vector3 c = Vector3.Lerp(mid, center, intersection.curves[j - 1]);
+
                 // ベジェ曲線で補完する
                 BezierCurve curve = new BezierCurve(startPoint, c, endPoint);
 
